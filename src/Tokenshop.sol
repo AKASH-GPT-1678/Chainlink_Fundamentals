@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
-//lib\chainlink-evm\contracts\src\v0.8\shared\interfaces\AggregatorV3Interface.sol
 
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -20,10 +19,21 @@ contract TokenShop is Ownable {
         );
     }
 
-    function amountToMint(uint256 amountinEth) public view returns (uint256){
-        uint256 ethUsd = uint256() * 10 ** 10;
-        uint256 ethAmountinUSD = amountinEth * ethUsd / 10 ** 18;
-            return (ethAmountInUSD * 10 ** TOKEN_DECIMALS) / TOKEN_USD_PRICE;
+    function getChainlinkDataFeedAnswer() public view returns (int) {
+        (
+            uint roundID,
+            int price,
+            uint startedAt,
+            uint timeStamp,
+            uint answeredInRound
+        ) = i_priceFeed.latestRoundData();
+        return price;
+    }
+
+    function amountToMint(uint256 amountinEth) public view returns (uint256) {
+        uint256 ethUsd = uint256(getChainlinkDataFeedAnswer()) * 10 ** 10;
+        uint256 ethAmountinUSD = (amountinEth * ethUsd) / 10 ** 18;
+        return (ethAmountInUSD * 10 ** TOKEN_DECIMALS) / TOKEN_USD_PRICE;
     }
 
     receive() external payable {
@@ -31,7 +41,18 @@ contract TokenShop is Ownable {
         if (msg.value == 0) {
             revert TokenShop__ZeroETHSent();
         }
-      
+
         i_token.mint(msg.sender, amountToMint(msg.value));
+    }
+
+    function withdraw() external onlyOwner {
+        // low level calls can be done on payable addresses
+        (bool success, ) = payable(owner()).call{value: address(this).balance}(
+            ""
+        );
+        if (!success) {
+            revert TokenShop__CouldNotWithdraw();
+        }
+        emit BalanceWithdrawn();
     }
 }
